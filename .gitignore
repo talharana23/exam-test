@@ -5,7 +5,7 @@ build/
 .DS_Store
 *.pem
 
-# Environment files - never expose secrets
+# Only .env is secret - keep ignored
 .env
 .env.local
 .env*.local
@@ -23,14 +23,3 @@ yarn-error.log*
 *.njsproj
 *.sln
 *.sw?
-
-# Local data files - not for version control
-data/results.json
-data/students.json
-data/tests.json
-data/admin.json
-
-# Misc local files
-data.json
-Krish_Quick_Memory_System.html
-system-test.js

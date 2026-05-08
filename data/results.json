@@ -1,0 +1,64 @@
+[
+  {
+    "studentId": "TEST-S001",
+    "studentName": "Test Student",
+    "testId": "TEST-MATH-01",
+    "testTitle": "Integration Test - Algebra",
+    "score": 1,
+    "total": 1,
+    "percentage": 100,
+    "cheatingDetected": false,
+    "autoSubmitted": false,
+    "durationTaken": 30,
+    "submittedAt": "2026-05-08T13:59:32.037Z"
+  },
+  {
+    "studentId": "TEST-S001",
+    "studentName": "Test Student",
+    "testId": "TEST-MATH-01",
+    "testTitle": "Integration Test - Algebra",
+    "score": 1,
+    "total": 1,
+    "percentage": 100,
+    "cheatingDetected": false,
+    "autoSubmitted": false,
+    "durationTaken": 30,
+    "submittedAt": "2026-05-08T14:01:08.797Z"
+  },
+  {
+    "studentId": "TEST-S001",
+    "studentName": "Test Student",
+    "testId": "TEST-MATH-01",
+    "testTitle": "Integration Test - Algebra",
+    "score": 1,
+    "total": 1,
+    "percentage": 100,
+    "cheatingDetected": false,
+    "autoSubmitted": false,
+    "durationTaken": 30,
+    "submittedAt": "2026-05-08T14:02:53.588Z"
+  },
+  {
+    "studentId": "STD123",
+    "studentName": "John",
+    "testId": "Chemistry",
+    "testTitle": "Chem Finals",
+    "score": 1,
+    "total": 1,
+    "percentage": 100,
+    "answers": {
+      "0": "Chemestry"
+    },
+    "cheatingDetected": false,
+    "autoSubmitted": false,
+    "durationTaken": 11,
+    "confidenceScores": {
+      "0": "unsure"
+    },
+    "revisionTags": {
+      "0": true
+    },
+    "isRevisionCompleted": true,
+    "submittedAt": "2026-05-08T14:31:47.051Z"
+  }
+]
