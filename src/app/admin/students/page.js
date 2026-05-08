@@ -13,6 +13,7 @@ export default function StudentsPage() {
   const [bulkJson, setBulkJson] = useState('');
   const [saving, setSaving] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedStudents, setSelectedStudents] = useState([]);
 
   useEffect(() => {
     fetchStudents();
@@ -124,6 +125,39 @@ export default function StudentsPage() {
     fetchStudents();
   };
 
+  const handleDeleteSelected = async () => {
+    if (selectedStudents.length === 0) return;
+    if (!confirm(`Are you sure you want to delete ${selectedStudents.length} selected student(s)?`)) return;
+    
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/students?ids=${selectedStudents.join(',')}`, { method: 'DELETE' });
+      if (res.ok) {
+        setSelectedStudents([]);
+        fetchStudents();
+      } else {
+        alert('Failed to delete selected students');
+      }
+    } catch (e) {
+      alert('Failed to delete selected students');
+    }
+    setSaving(false);
+  };
+
+  const handleSelectAll = (e) => {
+    if (e.target.checked) {
+      setSelectedStudents(filteredStudents.map(s => s.id));
+    } else {
+      setSelectedStudents([]);
+    }
+  };
+
+  const handleSelect = (id) => {
+    setSelectedStudents(prev => 
+      prev.includes(id) ? prev.filter(sid => sid !== id) : [...prev, id]
+    );
+  };
+
   const filteredStudents = students.filter(s => 
     (s.name?.toLowerCase() || '').includes(searchQuery.toLowerCase()) || 
     (s.id?.toLowerCase() || '').includes(searchQuery.toLowerCase())
@@ -137,11 +171,19 @@ export default function StudentsPage() {
           <p className="text-slate-400">View and manage all registered students in the system.</p>
         </div>
         <div className="flex flex-wrap gap-3">
+          {selectedStudents.length > 0 && (
+            <button 
+              onClick={handleDeleteSelected}
+              className="btn-secondary border-rose-500/30 text-rose-400 hover:bg-rose-500/10"
+            >
+              <Trash2 size={18} /> Delete Selected ({selectedStudents.length})
+            </button>
+          )}
           <button 
             onClick={handleBulkDelete}
             className="btn-secondary border-rose-500/30 text-rose-400 hover:bg-rose-500/10"
           >
-            <Trash2 size={18} /> Bulk Delete
+            <Trash2 size={18} /> Delete All
           </button>
           <button 
             onClick={() => setShowBulkModal(true)}
@@ -190,6 +232,14 @@ export default function StudentsPage() {
             <table className="data-table">
               <thead>
                 <tr>
+                  <th className="w-12 text-center">
+                    <input 
+                      type="checkbox" 
+                      onChange={handleSelectAll}
+                      checked={filteredStudents.length > 0 && selectedStudents.length === filteredStudents.length}
+                      className="rounded border-white/20 bg-white/5 text-indigo-500 focus:ring-indigo-500/50 w-4 h-4 cursor-pointer"
+                    />
+                  </th>
                   <th>Student Name</th>
                   <th>CNIC (ID)</th>
                   <th>Roll No (Password)</th>
@@ -200,6 +250,14 @@ export default function StudentsPage() {
               <tbody>
                 {filteredStudents.map((student) => (
                   <tr key={student.id} className={student.disabled ? 'opacity-40 grayscale-[0.5]' : ''}>
+                    <td className="text-center">
+                      <input 
+                        type="checkbox" 
+                        checked={selectedStudents.includes(student.id)}
+                        onChange={() => handleSelect(student.id)}
+                        className="rounded border-white/20 bg-white/5 text-indigo-500 focus:ring-indigo-500/50 w-4 h-4 cursor-pointer"
+                      />
+                    </td>
                     <td>
                       <div className="flex items-center gap-3">
                         <div className={`w-9 h-9 rounded-full ${student.disabled ? 'bg-slate-500/10 text-slate-500' : 'bg-indigo-500/10 text-indigo-400'} flex items-center justify-center font-bold text-xs border ${student.disabled ? 'border-slate-500/20' : 'border-indigo-500/20 shadow-[0_0_10px_rgba(99,102,241,0.1)]'}`}>

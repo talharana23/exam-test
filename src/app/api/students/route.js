@@ -36,6 +36,7 @@ export async function PUT(request) {
 export async function DELETE(request) {
   const { searchParams } = new URL(request.url);
   const id = searchParams.get('id');
+  const ids = searchParams.get('ids');
   const isBulk = searchParams.get('bulk') === 'true';
   
   if (isBulk) {
@@ -44,7 +45,14 @@ export async function DELETE(request) {
   }
 
   let students = getData('students');
-  students = students.filter(s => s.id !== id);
+  
+  if (ids) {
+    const idsArray = ids.split(',');
+    students = students.filter(s => !idsArray.includes(s.id));
+  } else if (id) {
+    students = students.filter(s => s.id !== id);
+  }
+
   saveData('students', students);
   
   return NextResponse.json({ success: true });
