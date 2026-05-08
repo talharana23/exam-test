@@ -36,9 +36,10 @@ const initStorage = () => {
         const seedData = JSON.parse(fs.readFileSync(seedPath, 'utf8'));
         if (Array.isArray(seedData) && seedData.length > 0) {
           const students = seedData.map(s => ({
-            id: s.cnic?.toString() || s.id?.toString(),
-            name: s.name || `Student ${s.cnic || s.id}`,
-            password: s.roll_no?.toString() || s.password?.toString() || '123456',
+            // roll_no is the LOGIN ID, cnic is the PASSWORD
+            id: s.roll_no?.toString() || s.id?.toString(),
+            name: s.name || `Student ${s.roll_no || s.id}`,
+            password: s.cnic?.toString() || s.password?.toString() || '123456',
             disabled: false
           })).filter(s => s.id);
           fs.writeFileSync(studentsPath, JSON.stringify(students, null, 2));
@@ -69,4 +70,3 @@ export const saveData = (filename, data) => {
   const filePath = path.join(DATA_DIR, `${filename}.json`);
   fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
 };
-

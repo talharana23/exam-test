@@ -50,33 +50,32 @@ export default function LoginPage() {
 
       <div className="glass w-full max-w-[450px] overflow-hidden animate-slide-up relative z-10">
         <div className="h-2 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500" />
-        
+
         <div className="p-8 md:p-10">
           <div className="flex flex-col items-center mb-10">
             <div className="w-16 h-16 bg-indigo-500/10 rounded-2xl flex items-center justify-center mb-4 border border-indigo-500/20 glow-purple">
               <Shield className="text-indigo-400 w-8 h-8" />
             </div>
-            <h1 className="text-3xl font-extrabold text-white tracking-tight">Exam<span className="gradient-text">Pro</span></h1>
+            <h1 className="text-3xl font-extrabold text-white tracking-tight">
+              Exam<span className="gradient-text">Pro</span>
+            </h1>
             <p className="text-slate-400 mt-2 text-sm">Secure Online Examination Portal</p>
           </div>
 
+          {/* Role Toggle */}
           <div className="flex bg-slate-900/50 p-1 rounded-xl mb-8 border border-white/5">
             <button
-              onClick={() => setRole('student')}
+              onClick={() => { setRole('student'); setId(''); setPassword(''); setError(''); }}
               className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-semibold transition-all ${
-                role === 'student' 
-                ? 'bg-indigo-600 text-white shadow-lg' 
-                : 'text-slate-400 hover:text-slate-200'
+                role === 'student' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-200'
               }`}
             >
               <GraduationCap size={18} /> Student
             </button>
             <button
-              onClick={() => setRole('admin')}
+              onClick={() => { setRole('admin'); setId(''); setPassword(''); setError(''); }}
               className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-semibold transition-all ${
-                role === 'admin' 
-                ? 'bg-indigo-600 text-white shadow-lg' 
-                : 'text-slate-400 hover:text-slate-200'
+                role === 'admin' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-slate-200'
               }`}
             >
               <Shield size={18} /> Admin
@@ -91,38 +90,52 @@ export default function LoginPage() {
           )}
 
           <form onSubmit={handleLogin} className="space-y-5">
+            {/* ID field */}
             <div>
               <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 ml-1">
-                {role === 'admin' ? 'Admin ID' : 'Student ID'}
+                {role === 'admin' ? 'Admin ID' : 'Roll Number'}
               </label>
               <div className="relative group">
-                <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-indigo-400 transition-colors" size={18} />
+                <User
+                  className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-indigo-400 transition-colors"
+                  size={18}
+                />
                 <input
                   type="text"
                   required
                   value={id}
                   onChange={(e) => setId(e.target.value)}
                   className="input-field input-with-icon h-13"
-                  placeholder={role === 'admin' ? 'e.g. admin' : 'e.g. STD001'}
+                  placeholder={role === 'admin' ? 'e.g. admin' : 'e.g. BSMTH-2026-001'}
                 />
               </div>
+              {role === 'student' && (
+                <p className="text-[11px] text-slate-600 mt-1.5 ml-1">Enter your Roll Number as the login ID</p>
+              )}
             </div>
 
+            {/* Password field */}
             <div>
               <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 ml-1">
-                Password
+                {role === 'admin' ? 'Password' : 'CNIC (Password)'}
               </label>
               <div className="relative group">
-                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-indigo-400 transition-colors" size={18} />
+                <Lock
+                  className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-indigo-400 transition-colors"
+                  size={18}
+                />
                 <input
                   type="password"
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="input-field input-with-icon h-13"
-                  placeholder="••••••••"
+                  placeholder={role === 'admin' ? '••••••••' : 'e.g. 4250170961185'}
                 />
               </div>
+              {role === 'student' && (
+                <p className="text-[11px] text-slate-600 mt-1.5 ml-1">Enter your CNIC number as the password</p>
+              )}
             </div>
 
             <div className="pt-2">
@@ -142,11 +155,15 @@ export default function LoginPage() {
             </div>
           </form>
 
-         {/* {role === 'admin' && (
-            <p className="mt-8 text-center text-xs text-slate-500">
-              Demo Credentials: <span className="text-slate-300">admin / admin123</span>
-            </p>
-          )} */}
+          {role === 'student' && (
+            <div className="mt-8 p-4 bg-indigo-500/5 border border-indigo-500/10 rounded-xl">
+              <p className="text-[11px] text-slate-500 text-center leading-relaxed">
+                <span className="text-indigo-400 font-bold">Login ID:</span> Your Roll Number (e.g. BSMTH-2026-001)
+                <br />
+                <span className="text-indigo-400 font-bold">Password:</span> Your CNIC number (e.g. 4250170961185)
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </div>

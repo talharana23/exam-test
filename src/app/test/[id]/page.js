@@ -26,112 +26,88 @@ export default function TestPage() {
   const [timeLeft, setTimeLeft] = useState(0);
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [cheatingAttempts, setCheatingAttempts] = useState(0);
-  const [testAborted, setTestAborted] = useState(false);
+  const [testFinalized, setTestFinalized] = useState(false); // unified flag: test is done
+  const [testAborted, setTestAborted] = useState(false);     // show aborted UI
   const [submitting, setSubmitting] = useState(false);
   
   // Revision & Learning State
   const [isRevisionMode, setIsRevisionMode] = useState(false);
-  const [needsRevision, setNeedsRevision] = useState({}); // { [index]: true }
-  const [confidence, setConfidence] = useState({}); // { [index]: 'guess' | 'unsure' | 'confident' }
+  const [needsRevision, setNeedsRevision] = useState({});
+  const [confidence, setConfidence] = useState({});
   const [showAITrick, setShowAITrick] = useState(false);
   const [aiTrick, setAiTrick] = useState('');
   const [loadingTrick, setLoadingTrick] = useState(false);
-  const [revisionCompleted, setRevisionCompleted] = useState(false);
   const [revisionList, setRevisionList] = useState([]);
   const [currentRevIndex, setCurrentRevIndex] = useState(0);
 
   const containerRef = useRef(null);
   const timerRef = useRef(null);
 
-  // AI Trick Logic
-  const getAITrick = async () => {
-    setLoadingTrick(true);
-    setShowAITrick(true);
-    const q = isRevisionMode ? test.questions[revisionList[currentRevIndex]] : test.questions[currentQuestionIndex];
-    
-    try {
-      const res = await fetch('/api/ai/trick', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          question: q.question,
-          answer: q.answer,
-          topic: q.topic || test.title
-        }),
-      });
-      const data = await res.json();
-      setAiTrick(data.trick);
-    } catch (err) {
-      setAiTrick("System is busy, but remember: Repetition is key! 🔑");
-    } finally {
-      setLoadingTrick(false);
-    }
-  };
+  // Use refs to always have fresh values inside async callbacks / event listeners
+  const testRef = useRef(null);
+  const answersRef = useRef({});
+  const userRef = useRef(null);
+  const timeLeftRef = useRef(0);
+  const testFinalizedRef = useRef(false);
+  const cheatingAttemptsRef = useRef(0);
+  const needsRevisionRef = useRef({});
+  const confidenceRef = useRef({});
+  const isRevisionModeRef = useRef(false);
 
-  const startRevisionMode = () => {
-    const list = test.questions.map((_, i) => i).filter(i => 
-      needsRevision[i] || confidence[i] === 'guess' || confidence[i] === 'unsure'
-    );
-    setRevisionList(list);
-    setIsRevisionMode(true);
-    setCurrentRevIndex(0);
-    // Exit full screen for revision to make it relaxed? No, let's keep it focused.
-  };
+  // Keep refs in sync with state
+  useEffect(() => { testRef.current = test; }, [test]);
+  useEffect(() => { answersRef.current = answers; }, [answers]);
+  useEffect(() => { userRef.current = user; }, [user]);
+  useEffect(() => { timeLeftRef.current = timeLeft; }, [timeLeft]);
+  useEffect(() => { testFinalizedRef.current = testFinalized; }, [testFinalized]);
+  useEffect(() => { cheatingAttemptsRef.current = cheatingAttempts; }, [cheatingAttempts]);
+  useEffect(() => { needsRevisionRef.current = needsRevision; }, [needsRevision]);
+  useEffect(() => { confidenceRef.current = confidence; }, [confidence]);
+  useEffect(() => { isRevisionModeRef.current = isRevisionMode; }, [isRevisionMode]);
 
-  // Fetch Test Data
-  useEffect(() => {
-    const storedUser = localStorage.getItem('user');
-    if (!storedUser) {
-      router.push('/login');
-      return;
-    }
-    setUser(JSON.parse(storedUser));
-
-    const fetchTest = async () => {
-      try {
-        const res = await fetch(`/api/tests?id=${id}`);
-        const data = await res.json();
-        if (data.error) throw new Error(data.error);
-        setTest(data);
-        setTimeLeft(data.duration * 60);
-      } catch (err) {
-        alert('Test not found');
-        router.push('/dashboard');
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchTest();
-  }, [id, router]);
-
-  // Submit Logic
-  const submitTest = useCallback(async (isAuto = false, cheatDetected = false) => {
-    if (submitting) return;
+  // ─── Core Submit Function ────────────────────────────────────────────────────
+  // Uses refs so it can be called from anywhere with fresh data
+  const submitTestCore = useCallback(async ({ isAuto = false, cheatDetected = false } = {}) => {
+    if (testFinalizedRef.current) return; // already submitted
+    testFinalizedRef.current = true;
+    setTestFinalized(true);
     setSubmitting(true);
 
-    // Calculate score
+    // Stop the timer immediately
+    clearInterval(timerRef.current);
+
+    const currentTest = testRef.current;
+    const currentAnswers = answersRef.current;
+    const currentUser = userRef.current;
+
+    if (!currentTest || !currentUser) {
+      setSubmitting(false);
+      return;
+    }
+
+    // Calculate score (may be 0 if cheating detected and no answers given)
     let score = 0;
-    test.questions.forEach((q, index) => {
-      if (answers[index] === q.answer) {
+    currentTest.questions.forEach((q, index) => {
+      if (currentAnswers[index] === q.answer) {
         score++;
       }
     });
 
     const resultData = {
-      studentId: user.id,
-      studentName: user.name,
-      testId: test.testId,
-      testTitle: test.title,
-      score: score,
-      total: test.questions.length,
-      percentage: Math.round((score / test.questions.length) * 100),
-      answers: answers,
+      studentId: currentUser.id,
+      studentName: currentUser.name,
+      testId: currentTest.testId,
+      testTitle: currentTest.title,
+      score,
+      total: currentTest.questions.length,
+      percentage: Math.round((score / currentTest.questions.length) * 100),
+      answers: currentAnswers,
       cheatingDetected: cheatDetected,
       autoSubmitted: isAuto,
-      durationTaken: (test.duration * 60) - timeLeft,
-      confidenceScores: confidence,
-      revisionTags: needsRevision,
-      isRevisionCompleted: isRevisionMode
+      durationTaken: (currentTest.duration * 60) - timeLeftRef.current,
+      confidenceScores: confidenceRef.current,
+      revisionTags: needsRevisionRef.current,
+      isRevisionCompleted: isRevisionModeRef.current,
     };
 
     try {
@@ -144,52 +120,148 @@ export default function TestPage() {
       if (res.ok) {
         localStorage.setItem('lastResult', JSON.stringify(resultData));
         router.push('/result');
+      } else {
+        console.error('Failed to save result');
+        router.push('/result'); // still redirect so student sees something
       }
     } catch (err) {
-      console.error('Submission failed');
+      console.error('Submission error:', err);
+      localStorage.setItem('lastResult', JSON.stringify(resultData));
+      router.push('/result');
     } finally {
       setSubmitting(false);
     }
-  }, [test, answers, user, timeLeft, router, submitting]);
+  }, [router]);
 
-  // Timer Logic
+  // ─── Cheating Handler ────────────────────────────────────────────────────────
+  const handleCheating = useCallback((reason) => {
+    if (testFinalizedRef.current) return; // already done, ignore
+
+    const newCount = cheatingAttemptsRef.current + 1;
+    cheatingAttemptsRef.current = newCount;
+    setCheatingAttempts(newCount);
+
+    if (newCount >= 3) {
+      // Hard abort: show aborted UI then force submit
+      setTestAborted(true);
+      submitTestCore({ isAuto: false, cheatDetected: true });
+    } else {
+      alert(
+        `⚠️ SECURITY WARNING\n\n` +
+        `Reason: ${reason}\n\n` +
+        `Violation ${newCount}/3 recorded.\n` +
+        `On the 3rd violation, your test will be immediately submitted.`
+      );
+    }
+  }, [submitTestCore]);
+
+  // ─── AI Trick ────────────────────────────────────────────────────────────────
+  const getAITrick = async () => {
+    setLoadingTrick(true);
+    setShowAITrick(true);
+    const q = isRevisionMode
+      ? test.questions[revisionList[currentRevIndex]]
+      : test.questions[currentQuestionIndex];
+    
+    try {
+      const res = await fetch('/api/ai/trick', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          question: q.question,
+          answer: q.answer,
+          topic: q.topic || test.title,
+        }),
+      });
+      const data = await res.json();
+      setAiTrick(data.trick);
+    } catch {
+      setAiTrick("System is busy, but remember: Repetition is key! 🔑");
+    } finally {
+      setLoadingTrick(false);
+    }
+  };
+
+  const startRevisionMode = () => {
+    const list = test.questions
+      .map((_, i) => i)
+      .filter(i => needsRevision[i] || confidence[i] === 'guess' || confidence[i] === 'unsure');
+    setRevisionList(list);
+    setIsRevisionMode(true);
+    setCurrentRevIndex(0);
+  };
+
+  // ─── Fetch Test ──────────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!test || testAborted || submitting) return;
+    const storedUser = localStorage.getItem('user');
+    if (!storedUser) {
+      router.push('/login');
+      return;
+    }
+    const parsedUser = JSON.parse(storedUser);
+    setUser(parsedUser);
+
+    const fetchTest = async () => {
+      try {
+        const res = await fetch(`/api/tests?id=${id}`);
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+        setTest(data);
+        setTimeLeft(data.duration * 60);
+        timeLeftRef.current = data.duration * 60;
+      } catch {
+        alert('Test not found');
+        router.push('/dashboard');
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchTest();
+  }, [id, router]);
+
+  // ─── Timer ───────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!test || testFinalized) return;
 
     timerRef.current = setInterval(() => {
-      setTimeLeft((prev) => {
-        if (prev <= 1) {
+      setTimeLeft(prev => {
+        const next = prev - 1;
+        timeLeftRef.current = next;
+        if (next <= 0) {
           clearInterval(timerRef.current);
-          submitTest(true);
+          submitTestCore({ isAuto: true, cheatDetected: false });
           return 0;
         }
-        return prev - 1;
+        return next;
       });
     }, 1000);
 
     return () => clearInterval(timerRef.current);
-  }, [test, testAborted, submitting, submitTest]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [test, testFinalized]);
 
-  // Anti-Cheating Logic
+  // ─── Anti-Cheating Event Listeners ──────────────────────────────────────────
   useEffect(() => {
     const handleVisibilityChange = () => {
-      if (document.hidden && !submitting) {
-        handleCheating('Tab switch detected');
-      }
+      if (document.hidden) handleCheating('Tab switch / window hidden detected');
     };
 
     const handleBlur = () => {
-      if (!submitting) {
-        handleCheating('Window focus lost');
-      }
+      handleCheating('Window lost focus');
     };
 
     const handleContextMenu = (e) => e.preventDefault();
-    
+
     const handleKeyDown = (e) => {
-      if (e.ctrlKey && (e.key === 'c' || e.key === 'v' || e.key === 'u')) {
+      const blocked = (e.ctrlKey || e.metaKey) && ['c', 'v', 'u', 'a', 's'].includes(e.key.toLowerCase());
+      if (blocked) {
         e.preventDefault();
-        handleCheating('Shortcut key blocked');
+        handleCheating(`Keyboard shortcut blocked (${e.key.toUpperCase()})`);
+      }
+      // Block F12 / DevTools
+      if (e.key === 'F12') {
+        e.preventDefault();
+        handleCheating('Developer tools shortcut blocked');
       }
     };
 
@@ -204,44 +276,27 @@ export default function TestPage() {
       window.removeEventListener('contextmenu', handleContextMenu);
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [submitting]);
+  }, [handleCheating]);
 
-  const handleCheating = (reason) => {
-    setCheatingAttempts(prev => {
-      const newCount = prev + 1;
-      if (newCount >= 3) {
-        setTestAborted(true);
-        submitTest(false, true);
-        return newCount;
-      }
-      return newCount;
-    });
-    alert(`WARNING: ${reason}. Test will be auto-submitted after 3 violations. Attempts: ${cheatingAttempts + 1}/3`);
-  };
-
-  const enterFullScreen = () => {
-    const elem = document.documentElement;
-    if (elem.requestFullscreen) {
-      elem.requestFullscreen();
-    } else if (elem.webkitRequestFullscreen) {
-      elem.webkitRequestFullscreen();
-    } else if (elem.msRequestFullscreen) {
-      elem.msRequestFullscreen();
-    }
-    setIsFullScreen(true);
-  };
-
-  // Detect exit fullscreen
+  // ─── Full-Screen Exit Detection ──────────────────────────────────────────────
   useEffect(() => {
     const fsHandler = () => {
-      if (!document.fullscreenElement && !submitting) {
+      if (!document.fullscreenElement) {
         setIsFullScreen(false);
         handleCheating('Full-screen mode exited');
       }
     };
     document.addEventListener('fullscreenchange', fsHandler);
     return () => document.removeEventListener('fullscreenchange', fsHandler);
-  }, [submitting]);
+  }, [handleCheating]);
+
+  const enterFullScreen = () => {
+    const elem = document.documentElement;
+    if (elem.requestFullscreen) elem.requestFullscreen();
+    else if (elem.webkitRequestFullscreen) elem.webkitRequestFullscreen();
+    else if (elem.msRequestFullscreen) elem.msRequestFullscreen();
+    setIsFullScreen(true);
+  };
 
   const formatTime = (seconds) => {
     const m = Math.floor(seconds / 60);
@@ -250,16 +305,18 @@ export default function TestPage() {
   };
 
   const handleOptionSelect = (option) => {
-    setAnswers({ ...answers, [currentQuestionIndex]: option });
+    const updated = { ...answersRef.current, [currentQuestionIndex]: option };
+    setAnswers(updated);
   };
 
+  // ─── Loading / Guards ────────────────────────────────────────────────────────
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center">
       <Loader2 className="animate-spin text-indigo-500" size={48} />
     </div>
   );
 
-  if (!isFullScreen && !testAborted) {
+  if (!isFullScreen && !testAborted && !testFinalized) {
     return (
       <div className="min-h-screen flex items-center justify-center p-6 bg-slate-950">
         <div className="glass max-w-xl w-full p-10 text-center animate-slide-up">
@@ -269,12 +326,11 @@ export default function TestPage() {
           <h2 className="text-3xl font-black text-white mb-4">Secure Exam Mode</h2>
           <p className="text-slate-400 mb-8 leading-relaxed">
             This test requires <span className="text-white font-bold">Full-Screen Mode</span>. 
-            Once started, do not exit full-screen or switch tabs, as this will trigger an automatic submission.
+            Once started, do not exit full-screen or switch tabs — each violation is recorded.
+            <br /><br />
+            <span className="text-rose-400 font-semibold">1 violation = immediate test termination.</span>
           </p>
-          <button 
-            onClick={enterFullScreen}
-            className="btn-primary w-full h-14 text-lg font-bold"
-          >
+          <button onClick={enterFullScreen} className="btn-primary w-full h-14 text-lg font-bold">
             <Maximize size={22} /> Enter Full-Screen & Start
           </button>
         </div>
@@ -282,6 +338,7 @@ export default function TestPage() {
     );
   }
 
+  // Aborted screen — shown briefly before redirect kicks in
   if (testAborted) {
     return (
       <div className="min-h-screen flex items-center justify-center p-6 bg-rose-950/20">
@@ -289,18 +346,26 @@ export default function TestPage() {
           <div className="w-20 h-20 bg-rose-500/10 rounded-full flex items-center justify-center mx-auto mb-6 border border-rose-500/20">
             <AlertTriangle className="text-rose-500" size={40} />
           </div>
-          <h2 className="text-3xl font-black text-white mb-4 uppercase tracking-tighter">Test Aborted</h2>
-          <p className="text-slate-300 mb-8">
-            Suspicious activity detected multiple times. Your attempt has been terminated and recorded.
+          <h2 className="text-3xl font-black text-white mb-4 uppercase tracking-tighter">Test Terminated</h2>
+          <p className="text-slate-300 mb-4">
+            3 security violations were detected. Your attempt has been forcibly submitted and flagged.
           </p>
-          <button onClick={() => router.push('/dashboard')} className="btn-secondary w-full">Return to Dashboard</button>
+          <p className="text-slate-500 text-sm mb-8">
+            Your current answers (if any) have been recorded with a <span className="text-rose-400 font-bold">CHEATING DETECTED</span> status. Redirecting to your result...
+          </p>
+          {submitting && (
+            <div className="flex items-center justify-center gap-2 text-slate-400">
+              <Loader2 className="animate-spin" size={20} />
+              <span className="text-sm">Submitting your result...</span>
+            </div>
+          )}
         </div>
       </div>
     );
   }
 
-  const currentQuestion = isRevisionMode 
-    ? test.questions[revisionList[currentRevIndex]] 
+  const currentQuestion = isRevisionMode
+    ? test.questions[revisionList[currentRevIndex]]
     : test.questions[currentQuestionIndex];
 
   return (
@@ -312,7 +377,9 @@ export default function TestPage() {
             {isRevisionMode ? 'REVISION MODE' : test.testId}
           </div>
           <h1 className="font-bold text-lg hidden md:block">
-            {isRevisionMode ? `Practicing: ${currentQuestion.question.substring(0, 30)}...` : test.title}
+            {isRevisionMode
+              ? `Practicing: ${currentQuestion.question.substring(0, 30)}...`
+              : test.title}
           </h1>
         </div>
 
@@ -321,9 +388,9 @@ export default function TestPage() {
           <span className="text-2xl font-black font-mono">{formatTime(timeLeft)}</span>
         </div>
 
-        <button 
-          onClick={() => { if(confirm('Submit test now?')) submitTest(); }}
-          disabled={submitting}
+        <button
+          onClick={() => { if (confirm('Submit test now?')) submitTestCore(); }}
+          disabled={submitting || testFinalized}
           className="btn-primary bg-gradient-to-r from-emerald-600 to-teal-600 shadow-lg shadow-emerald-600/20 border-none"
         >
           {submitting ? <Loader2 className="animate-spin" size={20} /> : <><Send size={18} /> Finish Test</>}
@@ -335,41 +402,45 @@ export default function TestPage() {
         <div className="max-w-4xl w-full">
           {/* Progress Tracker */}
           <div className="flex items-center gap-2 mb-10 overflow-x-auto pb-4 scrollbar-hide">
-            {!isRevisionMode ? test.questions.map((_, i) => (
-              <button
-                key={i}
-                onClick={() => setCurrentQuestionIndex(i)}
-                className={`w-10 h-10 shrink-0 rounded-xl flex items-center justify-center font-bold text-sm transition-all border ${
-                  currentQuestionIndex === i 
-                  ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-600/30 scale-110' 
-                  : answers[i] 
-                    ? 'bg-indigo-500/20 border-indigo-500/40 text-indigo-400' 
-                    : 'bg-slate-900 border-white/5 text-slate-500 hover:border-indigo-500/30'
-                }`}
-              >
-                {i + 1}
-              </button>
-            )) : revisionList.map((originalIndex, i) => (
-              <button
-                key={i}
-                onClick={() => setCurrentRevIndex(i)}
-                className={`w-10 h-10 shrink-0 rounded-xl flex items-center justify-center font-bold text-sm transition-all border ${
-                  currentRevIndex === i 
-                  ? 'bg-amber-600 border-amber-500 text-white shadow-lg shadow-amber-600/30 scale-110' 
-                  : 'bg-amber-500/10 border-amber-500/20 text-amber-400'
-                }`}
-              >
-                {originalIndex + 1}
-              </button>
-            ))}
+            {!isRevisionMode
+              ? test.questions.map((_, i) => (
+                  <button
+                    key={i}
+                    onClick={() => setCurrentQuestionIndex(i)}
+                    className={`w-10 h-10 shrink-0 rounded-xl flex items-center justify-center font-bold text-sm transition-all border ${
+                      currentQuestionIndex === i
+                        ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-600/30 scale-110'
+                        : answers[i]
+                        ? 'bg-indigo-500/20 border-indigo-500/40 text-indigo-400'
+                        : 'bg-slate-900 border-white/5 text-slate-500 hover:border-indigo-500/30'
+                    }`}
+                  >
+                    {i + 1}
+                  </button>
+                ))
+              : revisionList.map((originalIndex, i) => (
+                  <button
+                    key={i}
+                    onClick={() => setCurrentRevIndex(i)}
+                    className={`w-10 h-10 shrink-0 rounded-xl flex items-center justify-center font-bold text-sm transition-all border ${
+                      currentRevIndex === i
+                        ? 'bg-amber-600 border-amber-500 text-white shadow-lg shadow-amber-600/30 scale-110'
+                        : 'bg-amber-500/10 border-amber-500/20 text-amber-400'
+                    }`}
+                  >
+                    {originalIndex + 1}
+                  </button>
+                ))}
           </div>
 
           {/* Question Card */}
           <div className="glass p-8 md:p-12 animate-fade-in min-h-[500px] flex flex-col">
             <div className="mb-10">
               <div className="flex items-center gap-3 mb-4">
-                <span className="text-indigo-500 font-black text-sm uppercase tracking-widest">Question {currentQuestionIndex + 1} of {test.questions.length}</span>
-                <div className="h-px flex-1 bg-white/5"></div>
+                <span className="text-indigo-500 font-black text-sm uppercase tracking-widest">
+                  Question {currentQuestionIndex + 1} of {test.questions.length}
+                </span>
+                <div className="h-px flex-1 bg-white/5" />
               </div>
               <h2 className="text-2xl md:text-3xl font-bold text-white leading-tight">
                 {currentQuestion.question}
@@ -378,18 +449,22 @@ export default function TestPage() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 flex-1 content-start">
               {currentQuestion.options.map((option, index) => (
-                <div 
+                <div
                   key={index}
                   onClick={() => !isRevisionMode && handleOptionSelect(option)}
                   className={`mcq-option ${
-                    isRevisionMode 
-                    ? (option === currentQuestion.answer ? 'correct border-emerald-500 bg-emerald-500/10' : (answers[revisionList[currentRevIndex]] === option ? 'wrong border-rose-500 bg-rose-500/10' : ''))
-                    : (answers[currentQuestionIndex] === option ? 'selected' : '')
+                    isRevisionMode
+                      ? option === currentQuestion.answer
+                        ? 'correct border-emerald-500 bg-emerald-500/10'
+                        : answers[revisionList[currentRevIndex]] === option
+                        ? 'wrong border-rose-500 bg-rose-500/10'
+                        : ''
+                      : answers[currentQuestionIndex] === option
+                      ? 'selected'
+                      : ''
                   } ${isRevisionMode ? 'cursor-default' : 'cursor-pointer'}`}
                 >
-                  <div className="option-letter">
-                    {String.fromCharCode(65 + index)}
-                  </div>
+                  <div className="option-letter">{String.fromCharCode(65 + index)}</div>
                   <span className="text-slate-200 font-medium">{option}</span>
                 </div>
               ))}
@@ -398,7 +473,7 @@ export default function TestPage() {
             {isRevisionMode && (
               <div className="mt-8 animate-slide-up">
                 {!showAITrick ? (
-                  <button 
+                  <button
                     onClick={getAITrick}
                     className="w-full p-4 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 font-bold flex items-center justify-center gap-2 hover:bg-indigo-500/20 transition-all"
                   >
@@ -407,7 +482,7 @@ export default function TestPage() {
                 ) : (
                   <div className="p-6 rounded-2xl bg-gradient-to-br from-indigo-900/40 to-purple-900/40 border border-indigo-500/30 relative overflow-hidden group">
                     <div className="absolute top-0 right-0 p-2 opacity-20 group-hover:opacity-100 transition-opacity">
-                      <button onClick={() => setShowAITrick(false)} className="text-white"><X size={16}/></button>
+                      <button onClick={() => setShowAITrick(false)} className="text-white"><X size={16} /></button>
                     </div>
                     <p className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.2em] mb-2">Memory Hook by AI</p>
                     {loadingTrick ? (
@@ -431,15 +506,15 @@ export default function TestPage() {
                   {[
                     { id: 'guess', label: 'Guess 🎲', color: 'hover:bg-rose-500/20 text-rose-400' },
                     { id: 'unsure', label: 'Unsure 🤔', color: 'hover:bg-amber-500/20 text-amber-400' },
-                    { id: 'confident', label: 'Confident 💪', color: 'hover:bg-emerald-500/20 text-emerald-400' }
-                  ].map((lvl) => (
+                    { id: 'confident', label: 'Confident 💪', color: 'hover:bg-emerald-500/20 text-emerald-400' },
+                  ].map(lvl => (
                     <button
                       key={lvl.id}
                       onClick={() => setConfidence({ ...confidence, [currentQuestionIndex]: lvl.id })}
                       className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${
-                        confidence[currentQuestionIndex] === lvl.id 
-                        ? lvl.color.replace('hover:bg', 'bg').replace('/20', '/40') + ' border-current'
-                        : 'bg-white/5 border-transparent text-slate-400 ' + lvl.color
+                        confidence[currentQuestionIndex] === lvl.id
+                          ? lvl.color.replace('hover:bg', 'bg').replace('/20', '/40') + ' border-current'
+                          : 'bg-white/5 border-transparent text-slate-400 ' + lvl.color
                       }`}
                     >
                       {lvl.label}
@@ -452,8 +527,8 @@ export default function TestPage() {
                 onClick={() => setNeedsRevision({ ...needsRevision, [currentQuestionIndex]: !needsRevision[currentQuestionIndex] })}
                 className={`flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-sm transition-all border ${
                   needsRevision[currentQuestionIndex]
-                  ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-600/30'
-                  : 'bg-white/5 border-white/10 text-slate-400 hover:text-white hover:bg-white/10'
+                    ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-600/30'
+                    : 'bg-white/5 border-white/10 text-slate-400 hover:text-white hover:bg-white/10'
                 }`}
               >
                 <Send size={18} className={needsRevision[currentQuestionIndex] ? 'animate-pulse' : ''} />
@@ -473,58 +548,53 @@ export default function TestPage() {
               >
                 <ChevronLeft size={20} /> Previous
               </button>
-              
+
               <div className="hidden sm:block text-slate-500 text-sm font-medium">
-                {isRevisionMode ? `Revision ${currentRevIndex + 1} of ${revisionList.length}` : `${Object.keys(answers).length} of ${test.questions.length} Answered`}
+                {isRevisionMode
+                  ? `Revision ${currentRevIndex + 1} of ${revisionList.length}`
+                  : `${Object.keys(answers).length} of ${test.questions.length} Answered`}
               </div>
 
               <div className="flex gap-3">
                 {isRevisionMode ? (
                   currentRevIndex === revisionList.length - 1 ? (
                     <button
-                      onClick={() => { if(confirm('Finished revision? Submit test now?')) submitTest(); }}
+                      onClick={() => { if (confirm('Finished revision? Submit test now?')) submitTestCore(); }}
                       className="btn-primary bg-emerald-600 px-8 border-none"
                     >
                       Complete & Finish
                     </button>
                   ) : (
                     <button
-                      onClick={() => {
-                        setCurrentRevIndex(prev => prev + 1);
-                        setShowAITrick(false);
-                      }}
+                      onClick={() => { setCurrentRevIndex(prev => prev + 1); setShowAITrick(false); }}
                       className="btn-primary bg-amber-600 px-8 border-none"
                     >
                       Next to Master <ChevronRight size={20} />
                     </button>
                   )
+                ) : currentQuestionIndex === test.questions.length - 1 ? (
+                  <button
+                    onClick={() => {
+                      const revCount =
+                        Object.keys(needsRevision).filter(k => needsRevision[k]).length +
+                        Object.keys(confidence).filter(k => ['guess', 'unsure'].includes(confidence[k])).length;
+                      if (revCount > 0) {
+                        startRevisionMode();
+                      } else {
+                        if (confirm('Submit test now?')) submitTestCore();
+                      }
+                    }}
+                    className="btn-primary bg-indigo-600 px-8"
+                  >
+                    Finish Test
+                  </button>
                 ) : (
-                  currentQuestionIndex === test.questions.length - 1 ? (
-                    <button
-                      onClick={() => {
-                        const revCount = Object.keys(needsRevision).filter(k => needsRevision[k]).length + 
-                                         Object.keys(confidence).filter(k => ['guess', 'unsure'].includes(confidence[k])).length;
-                        if (revCount > 0) {
-                          startRevisionMode();
-                        } else {
-                          if(confirm('Submit test now?')) submitTest();
-                        }
-                      }}
-                      className="btn-primary bg-indigo-600 px-8"
-                    >
-                      Finish Test
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => {
-                        setCurrentQuestionIndex(prev => prev + 1);
-                        setShowAITrick(false);
-                      }}
-                      className="btn-primary px-8"
-                    >
-                      Next <ChevronRight size={20} />
-                    </button>
-                  )
+                  <button
+                    onClick={() => { setCurrentQuestionIndex(prev => prev + 1); setShowAITrick(false); }}
+                    className="btn-primary px-8"
+                  >
+                    Next <ChevronRight size={20} />
+                  </button>
                 )}
               </div>
             </div>
@@ -533,12 +603,14 @@ export default function TestPage() {
       </main>
 
       {/* Violation Alert Toast */}
-      {cheatingAttempts > 0 && (
+      {cheatingAttempts > 0 && !testAborted && (
         <div className="toast toast-warning flex items-center gap-3">
           <AlertTriangle size={20} />
           <div>
-            <p className="font-bold">Security Alert!</p>
-            <p className="text-xs opacity-90">Violation recorded ({cheatingAttempts}/3). Please stay on the page.</p>
+            <p className="font-bold">Security Violation Recorded!</p>
+            <p className="text-xs opacity-90">
+              {cheatingAttempts}/1 violation. {3 - cheatingAttempts} remaining before forced submission.
+            </p>
           </div>
         </div>
       )}
